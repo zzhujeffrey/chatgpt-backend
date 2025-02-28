@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
+const fs = require("fs");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,15 +10,44 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(cors());
 
+const CHAT_HISTORY_FILE = "chatHistory.json"; // 🔹 This is where we save conversations
+
+// 🔹 Helper function to load chat history from file
+function loadChatHistory() {
+    try {
+        const data = fs.readFileSync(CHAT_HISTORY_FILE, "utf8");
+        return JSON.parse(data);
+    } catch (error) {
+        return {}; // Return empty object if file does not exist
+    }
+}
+
+// 🔹 Helper function to save chat history
+function saveChatHistory(history) {
+    fs.writeFileSync(CHAT_HISTORY_FILE, JSON.stringify(history, null, 2));
+}
+
+// 🔹 Handle Chat Requests with Memory
 app.post("/chat", async (req, res) => {
     try {
-        const { message } = req.body;
+        const { message, sessionId } = req.body;
+        let chatHistory = loadChatHistory();
 
+        // Initialize session if not found
+        if (!chatHistory[sessionId]) {
+            chatHistory[sessionId] = [];
+        }
+
+        // Retrieve past messages for context
+        const pastMessages = chatHistory[sessionId].slice(-10); // Limit to last 10 exchanges
+        pastMessages.push({ role: "user", content: message });
+
+        // 🔹 Send conversation history to OpenAI
         const response = await axios.post(
             "https://api.openai.com/v1/chat/completions",
             {
                 model: "gpt-4",
-                messages: [{ role: "user", content: message }]
+                messages: pastMessages
             },
             {
                 headers: {
@@ -27,7 +57,15 @@ app.post("/chat", async (req, res) => {
             }
         );
 
-        res.json({ reply: response.data.choices[0].message.content });
+        const bot_reply = response.data.choices[0].message.content;
+
+        // Store user message & bot response in local JSON file
+        chatHistory[sessionId].push({ role: "user", content: message });
+        chatHistory[sessionId].push({ role: "assistant", content: bot_reply });
+        saveChatHistory(chatHistory);
+
+        res.json({ reply: bot_reply });
+
     } catch (error) {
         console.error("Error:", error.response ? error.response.data : error);
         res.status(500).json({ error: "Something went wrong." });
