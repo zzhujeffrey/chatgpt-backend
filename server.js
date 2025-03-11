@@ -10,9 +10,9 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(cors());
 
-const CHAT_HISTORY_FILE = "chatHistory.json"; // 🔹 This is where we save conversations
+const CHAT_HISTORY_FILE = "chatHistory.json"; // 🔹 Stores chat history locally
 
-// 🔹 Helper function to load chat history from file
+// 🔹 Load chat history from file
 function loadChatHistory() {
     try {
         const data = fs.readFileSync(CHAT_HISTORY_FILE, "utf8");
@@ -22,12 +22,12 @@ function loadChatHistory() {
     }
 }
 
-// 🔹 Helper function to save chat history
+// 🔹 Save chat history to file
 function saveChatHistory(history) {
     fs.writeFileSync(CHAT_HISTORY_FILE, JSON.stringify(history, null, 2));
 }
 
-// 🔹 Handle Chat Requests with Memory
+// 🔹 Handle Chat Requests (Now logs each survey separately)
 app.post("/chat", async (req, res) => {
     try {
         const { message, sessionId } = req.body;
@@ -39,7 +39,7 @@ app.post("/chat", async (req, res) => {
         }
 
         // Retrieve past messages for context
-        const pastMessages = chatHistory[sessionId].slice(-20); // Limit to last 20 exchanges
+        const pastMessages = chatHistory[sessionId].slice(-10); // Limit to last 10 messages
         pastMessages.push({ role: "user", content: message });
 
         // 🔹 Send conversation history to OpenAI
@@ -59,7 +59,7 @@ app.post("/chat", async (req, res) => {
 
         const bot_reply = response.data.choices[0].message.content;
 
-        // Store user message & bot response in local JSON file
+        // Store conversation under unique survey session ID
         chatHistory[sessionId].push({ role: "user", content: message });
         chatHistory[sessionId].push({ role: "assistant", content: bot_reply });
         saveChatHistory(chatHistory);
