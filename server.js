@@ -3,6 +3,7 @@ const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
 const fs = require("fs");
+const createCsvWriter = require("csv-writer").createObjectCsvWriter;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,7 +11,20 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(cors());
 
-const CHAT_HISTORY_FILE = "chatHistory.json"; // 🔹 Stores chat history locally
+const CHAT_HISTORY_FILE = "chatHistory.json"; // Stores chat history locally
+const CSV_FILE = "chatLogs.csv"; // Stores chat logs for Qualtrics matching
+
+// 🔹 Create CSV Writer
+const csvWriter = createCsvWriter({
+    path: CSV_FILE,
+    header: [
+        { id: "sessionId", title: "Survey Session ID" },
+        { id: "user_message", title: "User Message" },
+        { id: "bot_response", title: "Bot Response" },
+        { id: "timestamp", title: "Timestamp" }
+    ],
+    append: true // Append new chats instead of overwriting
+});
 
 // 🔹 Load chat history from file
 function loadChatHistory() {
@@ -27,22 +41,33 @@ function saveChatHistory(history) {
     fs.writeFileSync(CHAT_HISTORY_FILE, JSON.stringify(history, null, 2));
 }
 
+// 🔹 Function to Save Chats to CSV
+function saveChatToCSV(sessionId, user_message, bot_response) {
+    const logEntry = [{
+        sessionId,
+        user_message,
+        bot_response,
+        timestamp: new Date().toISOString()
+    }];
+
+    csvWriter.writeRecords(logEntry).catch(err => console.error("CSV Write Error:", err));
+}
+
 // 🔹 Handle Chat Requests (Now logs each survey separately)
 app.post("/chat", async (req, res) => {
     try {
         const { message, sessionId } = req.body;
         let chatHistory = loadChatHistory();
 
-        // Initialize session if not found
         if (!chatHistory[sessionId]) {
             chatHistory[sessionId] = [];
         }
 
         // Retrieve past messages for context
-        const pastMessages = chatHistory[sessionId].slice(-10); // Limit to last 10 messages
+        const pastMessages = chatHistory[sessionId].slice(-10);
         pastMessages.push({ role: "user", content: message });
 
-        // 🔹 Send conversation history to OpenAI
+        // Send conversation history to OpenAI
         const response = await axios.post(
             "https://api.openai.com/v1/chat/completions",
             {
@@ -59,16 +84,29 @@ app.post("/chat", async (req, res) => {
 
         const bot_reply = response.data.choices[0].message.content;
 
-        // Store conversation under unique survey session ID
+        // Store conversation in JSON
         chatHistory[sessionId].push({ role: "user", content: message });
         chatHistory[sessionId].push({ role: "assistant", content: bot_reply });
         saveChatHistory(chatHistory);
+
+        // 🔹 Save to CSV for easy Qualtrics matching
+        saveChatToCSV(sessionId, message, bot_reply);
 
         res.json({ reply: bot_reply });
 
     } catch (error) {
         console.error("Error:", error.response ? error.response.data : error);
         res.status(500).json({ error: "Something went wrong." });
+    }
+});
+
+// 🔹 Serve chat history via an API endpoint
+app.get("/chat-history", (req, res) => {
+    try {
+        const chatHistory = loadChatHistory();
+        res.json(chatHistory);
+    } catch (error) {
+        res.status(500).json({ error: "Could not retrieve chat history." });
     }
 });
 
