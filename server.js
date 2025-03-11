@@ -39,7 +39,7 @@ app.post("/chat", async (req, res) => {
         }
 
         // Retrieve past messages for context
-        const pastMessages = chatHistory[sessionId].slice(-10); // Limit to last 10 exchanges
+        const pastMessages = chatHistory[sessionId].slice(-20); // Limit to last 20 exchanges
         pastMessages.push({ role: "user", content: message });
 
         // 🔹 Send conversation history to OpenAI
