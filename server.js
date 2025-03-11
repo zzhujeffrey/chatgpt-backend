@@ -110,4 +110,15 @@ app.get("/chat-history", (req, res) => {
     }
 });
 
+// 🔹 Serve `chatLogs.csv` for direct download
+app.get("/download-chat-logs", (req, res) => {
+    const filePath = "./chatLogs.csv"; // Ensure file is in backend folder
+    res.download(filePath, "chatLogs.csv", (err) => {
+        if (err) {
+            console.error("File Download Error:", err);
+            res.status(500).send("Error downloading file.");
+        }
+    });
+});
+
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
